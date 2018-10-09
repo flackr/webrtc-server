@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<script src="webrtc-connection.js"></script>
+<div id="log"></div>
+<script>
+
+function ping(connection, timeout) {
+  return new Promise((resolve, reject) => {
+    let start = performance.now();
+    connection.addEventListener('message', function onmessage(evt) {
+      connection.removeEventListener('message', onmessage);
+      resolve(performance.now() - start);
+    });
+    connection.send('ping');
+  });
+}
+
+async function test() {
+  let conn = await WebRTCConnection.establish(new WebSocket(location.origin.replace('http', 'ws') + '/echo'));
+  for (let i = 0; i < 10; i++) {
+    await ping(conn, 1000);
+  }
+  conn.close();
+}
+</script>

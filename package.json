@@ -1,0 +1,16 @@
+{
+  "name": "webrtc-server",
+  "version": "0.0.0",
+  "description": "A WebRTC server library and demos to show resultant latency",
+  "main": "server.js",
+  "repository": "",
+  "author": "Robert Flack <flackr@chromium.org>",
+  "dependencies": {
+    "http": "~0.0.0",
+    "https": "~1.0.0",
+    "ws": "~6.1.0",
+    "wrtc": "~0.2.1",
+    "finalhandler": "~1.1.1",
+    "serve-static": "~1.13.2"
+  }
+}
