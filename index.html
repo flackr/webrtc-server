@@ -1,45 +1,126 @@
 <!DOCTYPE html>
 <style>#log { white-space: pre; }</style>
 <script src="webrtc-connection.js"></script>
+<p>
+  Ping test of establishing a connection to the server and sending messages and
+  measuring the response time.
+</p>
+
+<span>Number of messages: </span><input id="message-count" value="30">
+<p>
+  The number of messages to send in the test.
+</p>
+
+<span>Message interval (in milliseconds): </span><input id="message-interval" value="30">
+<p>
+  The time between sending each message. In a game this would normally be
+  whatever your game's network update loop interval was. Message receipt is not
+  waited for.
+</p>
+
+<span>Message timeout (in milliseconds): </span><input id="message-timeout" value="1000">
+<p>
+  The maximum time to wait for responses once all messages are sent.
+</p>
+
+<span>Message length (in bytes): </span><input id="message-length" value="1000">
+<p>
+  The length of message to send. When targeting performance, this should be
+  less than the fragmentation threshold and allow for some overhead from the
+  protocol.
+</p>
+
+<button id="run-test">Run test</button>
+
 <div id="log"></div>
 <script>
+
+function $(id) {
+  return document.getElementById(id);
+}
 
 function log(text) {
   document.getElementById('log').textContent += text + '\n';
 }
 
-function ping(connection, timeout) {
-  return new Promise((resolve, reject) => {
-    let start = performance.now();
-    let timer = setTimeout(function() {
+function pingTest(connection, frequency, messages, message_length, timeout) {
+  return new Promise(function(resolve) {
+    function testDone() {
+      clearTimeout(timeoutTimer);
+      clearInterval(interval);
+      if (received < messages) {
+        log('Dropped ' + (messages - received) + ' messages.');
+      }
       connection.removeEventListener('message', onmessage);
-      reject();
-    }, timeout);
-    function onmessage(evt) {
-      connection.removeEventListener('message', onmessage);
-      clearTimeout(timer);
-      resolve(performance.now() - start);
+      connection.close();
+      resolve();
     }
+    let pingStartTimes = [];
+    let received = 0;
+    let timeoutTimer = undefined;
+
+    let prefix = '';
+    while (prefix.length < message_length)
+      prefix += String.fromCharCode(65 + (Math.random() * 26));
+
+    function onmessage(evt) {
+      let receiveTime = performance.now();
+      let index = parseInt(evt.data.substring(prefix.length));
+      let time = (receiveTime - pingStartTimes[index]);
+      log('Ping ' + index + ' received in ' + time + 'ms');
+      received++;
+      if (received == messages) {
+        testDone();
+      }
+    }
+
     connection.addEventListener('message', onmessage);
-    connection.send('ping');
+    let interval = setInterval(function() {
+      let index = pingStartTimes.length;
+      pingStartTimes.push(performance.now());
+      connection.send(prefix + index);
+      if (pingStartTimes.length == messages) {
+        clearInterval(interval);
+        timeoutTimer = setTimeout(testDone, timeout)
+      }
+    }, frequency);
   });
 }
 
-async function test() {
+async function testWebRTC(params) {
+  log('Connecting WebRTC...');
   let start = performance.now();
   let conn = await WebRTCConnection.establish(new WebSocket(location.origin.replace('http', 'ws') + '/echo'));
   let duration = performance.now() - start;
-  log('Connection established in ' + duration + 'ms');
-  for (let i = 0; i < 10; i++) {
-    try {
-      let pingTime = await ping(conn, 1000);
-      log('Ping ' + i + ' received in ' + pingTime + 'ms');
-    } catch(err) {
-      log('Ping ' + i + ' lost');
-    }
-  }
-  conn.close();
+  log('WebRTC connection established in ' + duration + 'ms');
+  await pingTest(conn, params.interval, params.count, params.length, params.timeout);
 }
 
-test();
+function testWebSocket(params) {
+  return new Promise(function (resolve, reject) {
+    log('Connecting WebSocket...');
+    let start = performance.now();
+    let ws = new WebSocket(location.origin.replace('http', 'ws') + '/echo-websocket');
+    ws.onopen = function() {
+      let duration = performance.now() - start;
+      log('WebSocket connection established in ' + duration + 'ms');
+      pingTest(ws, params.interval, params.count, params.length, params.timeout).then(resolve);
+    };
+  });
+}
+
+async function runTests() {
+  // Clear log first.
+  $('log').textContent = '';
+  let params = {
+    count: parseInt($('message-count').value),
+    interval: parseInt($('message-interval').value),
+    timeout: parseInt($('message-timeout').value),
+    length: parseInt($('message-length').value),
+  }
+  await testWebSocket(params);
+  await testWebRTC(params);
+}
+
+$('run-test').addEventListener('click', runTests);
 </script>

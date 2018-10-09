@@ -8,22 +8,25 @@ var serveStatic = require('serve-static');
 
 exports.Server = function() {
 
-  async function acceptEchoServer(ws) {
-    let conn = await webrtcConnection.establish(ws, {offer: true});
+  async function establishDataChannelThen(ws, callback) {
+    callback(await webrtcConnection.establish(ws, {offer: true}));
+  }
+
+
+  async function acceptEchoServer(conn) {
     conn.addEventListener('message', function(evt) {
       conn.send(evt.data);
     });
   }
 
-  var Server = function() {
-    this.webServer_ = null;
-    this.webSocketServer_ = null;
-    this.serve = serveStatic('./');
-  };
+  class Server {
+    constructor() {
+      this.webServer_ = null;
+      this.webSocketServer_ = null;
+      this.serve = serveStatic('./');
+    }
 
-  Server.prototype = {
-
-    listen: function(options) {
+    listen(options) {
       options.port = options.port || process.env.PORT || (options.key ? 443 : 80);
       if (options.key)
         this.webServer_ = https.createServer(options, this.onRequest.bind(this));
@@ -33,13 +36,13 @@ exports.Server = function() {
       this.webSocketServer_.on('connection', this.onConnection.bind(this));
       this.webServer_.listen(options.port);
       console.log('Listening on ' + options.port);
-    },
+    }
 
-    onRequest: function(req, res) {
+    onRequest(req, res) {
       // Default handler.
       var done = finalhandler(req, res);
       this.serve(req, res, done);
-    },
+    }
 
     /**
      * Dispatched when a client connects to a websocket.
@@ -47,22 +50,28 @@ exports.Server = function() {
      * @param {WebSocket} websocket A connected websocket client connection.
      * @param {Object?} req The request object. May be undefined on older node.
      */
-    onConnection: function(websocket, req) {
+    onConnection(websocket, req) {
       req = req || websocket.upgradeReq;
       var origin = req.origin || 'unknown';
       if (req.url == '/chat') {
         // TODO: implement chat server.
         console.log('chat requested');
+      } else if (req.url == '/echo') {
+        establishDataChannelThen(websocket, acceptEchoServer);
+      } else if (req.url == '/echo-websocket') {
+        acceptEchoServer(websocket);
+      } else {
+        // Close all other connections.
+        websocket.close();
       }
-      acceptEchoServer(websocket);
-    },
+    }
 
     /**
      * Shuts down the signaling server.
      */
-    shutdown: function() {
+    shutdown() {
       this.webSocketServer_.close();
-    },
+    }
 
   };
 

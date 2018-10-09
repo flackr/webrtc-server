@@ -25,7 +25,6 @@ if (typeof exports !== 'undefined') {
    */
   async function establish(websocket, options) {
     return new Promise(function(accept, reject) {
-      console.log('working');
       let rtcConnection = new RTCPeerConnection(options && options.configuration ||
           {iceServers: [
               {urls: "stun:stun.l.google.com:19302"},
@@ -35,7 +34,7 @@ if (typeof exports !== 'undefined') {
       if (options && options.offer) {
         ondatachannel(rtcConnection.createDataChannel('data',
             options && options.dataChannelOptions || {
-                ordered: false, maxRetransmits: 0}));
+                ordered: false, maxPacketLifeTime: 0}));
       }
       function cleanup() {
         websocket.removeEventListener('message', onmessage);
