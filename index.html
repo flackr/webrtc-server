@@ -1,15 +1,26 @@
 <!DOCTYPE html>
+<style>#log { white-space: pre; }</style>
 <script src="webrtc-connection.js"></script>
 <div id="log"></div>
 <script>
 
+function log(text) {
+  document.getElementById('log').textContent += text + '\n';
+}
+
 function ping(connection, timeout) {
   return new Promise((resolve, reject) => {
     let start = performance.now();
-    connection.addEventListener('message', function onmessage(evt) {
+    let timer = setTimeout(function() {
       connection.removeEventListener('message', onmessage);
+      reject();
+    }, timeout);
+    function onmessage(evt) {
+      connection.removeEventListener('message', onmessage);
+      clearTimeout(timer);
       resolve(performance.now() - start);
-    });
+    }
+    connection.addEventListener('message', onmessage);
     connection.send('ping');
   });
 }
@@ -17,8 +28,15 @@ function ping(connection, timeout) {
 async function test() {
   let conn = await WebRTCConnection.establish(new WebSocket(location.origin.replace('http', 'ws') + '/echo'));
   for (let i = 0; i < 10; i++) {
-    await ping(conn, 1000);
+    try {
+      let pingTime = await ping(conn, 1000);
+      log('Ping ' + i + ' received in ' + pingTime + 'ms');
+    } catch(err) {
+      log('Ping ' + i + ' lost');
+    }
   }
   conn.close();
 }
+
+test();
 </script>

@@ -35,10 +35,10 @@ if (typeof exports !== 'undefined') {
       if (options && options.offer) {
         ondatachannel(rtcConnection.createDataChannel('data',
             options && options.dataChannelOptions || {
-                ordered: false, maxPacketLifeTime: null, maxRetransmits: 0}));
+                ordered: false, maxRetransmits: 0}));
       }
       function cleanup() {
-        websocket.removeEventListener(onmessage);
+        websocket.removeEventListener('message', onmessage);
         websocket.close();
         rtcConnection.ondatachannel = rtcConnection.onicecandidate =
             rtcConnection.onIceConnectionStateChange = undefined;
@@ -62,18 +62,7 @@ if (typeof exports !== 'undefined') {
           }
         }
       }
-      rtcConnection.ondatachannel = function(rtcConnection, evt) {
-        ondatachannel(evt.channel);
-      };
-      rtcConnection.onicecandidate = function(evt) {
-        websocket.send(JSON.stringify({type: 'candidate', value: evt.candidate}));
-      };
-      rtcConnection.onIceConnectionStateChange = function() {
-        if (rtcConnection.iceConnectionState == 'disconnected') {
-          fail();
-        }
-      };
-      websocket.addEventListener('message', function onmessage(evt) {
+      function onmessage(evt) {
         let data = JSON.parse(evt.data);
         if (data.type == 'offer' || data.type == 'answer')
           rtcConnection.setRemoteDescription(new RTCSessionDescription(data.value));
@@ -87,7 +76,20 @@ if (typeof exports !== 'undefined') {
         } else if (data.type == 'candidate') {
           rtcConnection.addIceCandidate(new RTCIceCandidate(data.value));
         }
-      });
+      }
+      rtcConnection.ondatachannel = function(evt) {
+        ondatachannel(evt.channel);
+      };
+      rtcConnection.onicecandidate = function(evt) {
+        if (!evt.candidate) return;
+        websocket.send(JSON.stringify({type: 'candidate', value: evt.candidate}));
+      };
+      rtcConnection.onIceConnectionStateChange = function() {
+        if (rtcConnection.iceConnectionState == 'disconnected') {
+          fail();
+        }
+      };
+      websocket.addEventListener('message', onmessage);
       if (options && options.offer) {
         rtcConnection.createOffer(function(desc) {
           rtcConnection.setLocalDescription(desc);
