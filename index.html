@@ -26,7 +26,10 @@ function ping(connection, timeout) {
 }
 
 async function test() {
+  let start = performance.now();
   let conn = await WebRTCConnection.establish(new WebSocket(location.origin.replace('http', 'ws') + '/echo'));
+  let duration = performance.now() - start;
+  log('Connection established in ' + duration + 'ms');
   for (let i = 0; i < 10; i++) {
     try {
       let pingTime = await ping(conn, 1000);
