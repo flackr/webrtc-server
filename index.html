@@ -1,6 +1,11 @@
 <!DOCTYPE html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC echo test</title>
+</head>
 <style>#log { white-space: pre; }</style>
 <script src="webrtc-connection.js"></script>
+<body>
 <p>
   Ping test of establishing a connection to the server and sending messages and
   measuring the response time.
@@ -32,6 +37,11 @@
 
 <button id="run-test">Run test</button>
 
+<p>
+Note about iOS: IOS requires calling getUserMedia before allowing WebRTC to
+establish a direct connection.addEventListener
+</p>
+<button id="get-user-media">Get User Media</button>
 <div id="log"></div>
 <script>
 
@@ -122,5 +132,16 @@ async function runTests() {
   await testWebRTC(params);
 }
 
-$('run-test').addEventListener('click', runTests);
+document.addEventListener('DOMContentLoaded', function() {
+  $('run-test').addEventListener('click', runTests);
+  $('get-user-media').addEventListener('click', function() {
+    var constraints = { audio: true, video: false };
+
+    window.navigator.mediaDevices.getUserMedia(constraints)
+    .then(function(mediaStream) {
+      $('get-user-media').textContent = 'Got user media';
+    });
+  });
+});
 </script>
+</body>
