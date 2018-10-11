@@ -1,4 +1,5 @@
 const webrtcConnection = require('./webrtc-connection.js');
+const EchoServer = require('./servers/echo-server.js');
 
 var http = require('http');
 var https = require('https');
@@ -12,10 +13,18 @@ exports.Server = function() {
     callback(await webrtcConnection.establish(ws, {offer: true}));
   }
 
-
-  async function acceptEchoServer(conn) {
-    conn.addEventListener('message', function(evt) {
-      conn.send(evt.data);
+  function connectWebsockets(ws1, ws2) {
+    ws1.addEventListener('message', function(evt) {
+      ws2.send(evt.data);
+    });
+    ws2.addEventListener('message', function(evt) {
+      ws1.send(evt.data);
+    });
+    ws1.addEventListener('close', function() {
+      ws2.close();
+    });
+    ws2.addEventListener('close', function() {
+      ws1.close();
     });
   }
 
@@ -23,6 +32,7 @@ exports.Server = function() {
     constructor() {
       this.webServer_ = null;
       this.webSocketServer_ = null;
+      this.listeners_ = {};
       this.serve = serveStatic('./');
     }
 
@@ -57,13 +67,35 @@ exports.Server = function() {
         // TODO: implement chat server.
         console.log('chat requested');
       } else if (req.url == '/echo') {
-        establishDataChannelThen(websocket, acceptEchoServer);
+        establishDataChannelThen(websocket, EchoServer.accept);
       } else if (req.url == '/echo-websocket') {
-        acceptEchoServer(websocket);
+        EchoServer.accept(websocket);
+      } else if (req.url.startsWith('/listen/')) {
+        let name = req.url.split('/')[2];
+        if (this.listeners_[name]) {
+          // Don't allow duplicate listeners on the same name.
+          websocket.close();
+          return;
+        }
+        this.listeners_[name] = websocket;
+        this.listeners_.onclose = this.onWebsocketClose.bind(this, name);
+      } else if (req.url.startsWith('/connect/')) {
+        let name = req.url.split('/')[2];
+        if (!this.listeners_[name]) {
+          websocket.close();
+          return;
+        }
+        this.listeners_[name].onclose = undefined;
+        this.listeners_[name].send('connected');
+        connectWebsockets(websocket, this.listeners_[name]);
+        delete this.listeners_[name];
       } else {
-        // Close all other connections.
         websocket.close();
       }
+    }
+
+    onWebsocketClose(name) {
+      delete this.listeners_[name];
     }
 
     /**

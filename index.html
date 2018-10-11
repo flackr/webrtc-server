@@ -35,6 +35,7 @@
   protocol.
 </p>
 
+<span>Use custom server: </span><input id="server-name"><br>
 <button id="run-test">Run test</button>
 
 <p>
@@ -100,7 +101,10 @@ function pingTest(connection, frequency, messages, message_length, timeout) {
 async function testWebRTC(params) {
   log('Connecting WebRTC...');
   let start = performance.now();
-  let conn = await WebRTCConnection.establish(new WebSocket(location.origin.replace('http', 'ws') + '/echo'));
+  let url = location.origin.replace('http', 'ws') + '/echo';
+  if ($('server-name').value)
+    url = location.origin.replace('http', 'ws') + '/connect/' + $('server-name').value;
+  let conn = await WebRTCConnection.establish(new WebSocket(url));
   let duration = performance.now() - start;
   log('WebRTC connection established in ' + duration + 'ms');
   await pingTest(conn, params.interval, params.count, params.length, params.timeout);
