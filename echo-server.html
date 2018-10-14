@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC echo test</title>
+</head>
+<style>#log { white-space: pre; }</style>
+<script src="webrtc-connection.js"></script>
+<script src="servers/echo-server.js"></script>
+<body>
+  <span>Server name: </span><input id="name" value="test"><br>
+  <button id="run">Run server</button><br>
+  <button id="get-user-media">Get user media</button>
+</body>
+<script>
+function $(id) {
+  return document.getElementById(id);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  $('run').addEventListener('click', function() {
+    $('run').disabled = true;
+    let ws = new WebSocket(location.origin.replace('http', 'ws') + '/listen/' + $('name').value);
+    ws.onopen = function() {
+      $('run').textContent = 'Listening';
+    }
+    ws.onmessage = async function(evt) {
+      $('run').textContent = 'Connecting';
+      ws.onmessage = undefined;
+      let conn = await WebRTCConnection.establish(ws, {offer: true});
+      $('run').textContent = 'Connected';
+      EchoServer.accept(conn);
+      conn.addEventListener('close', onclose);
+    }
+    function onclose() {
+      $('run').textContent = 'Run server';
+      $('run').disabled = false;
+    }
+  });
+  $('get-user-media').addEventListener('click', function() {
+    var constraints = { audio: true, video: false };
+
+    window.navigator.mediaDevices.getUserMedia(constraints)
+    .then(function(mediaStream) {
+      $('get-user-media').textContent = 'Got user media';
+    });
+  });
+});
+</script>
