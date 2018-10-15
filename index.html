@@ -98,6 +98,10 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function locationPath() {
+  return location.pathname.substring(0, location.pathname.lastIndexOf('/') + 1);
+}
+
 function log(text) {
   // No logging.
   // document.getElementById('log').textContent += text + '\n';
@@ -194,9 +198,9 @@ let num_tests = 2;
 async function testWebRTC(params) {
   log('Connecting WebRTC...');
   let start = performance.now();
-  let url = location.origin.replace('http', 'ws') + location.pathname + 'echo';
+  let url = location.origin.replace('http', 'ws') + locationPath() + 'echo';
   if ($('server-name').value)
-    url = location.origin.replace('http', 'ws') + location.pathname + 'connect/' + $('server-name').value;
+    url = location.origin.replace('http', 'ws') + locationPath() + 'connect/' + $('server-name').value;
   let conn = await WebRTCConnection.establish(new WebSocket(url));
   let duration = performance.now() - start;
   log('WebRTC connection established in ' + duration + 'ms');
@@ -209,7 +213,7 @@ function testWebSocket(params) {
   return new Promise(function (resolve, reject) {
     log('Connecting WebSocket...');
     let start = performance.now();
-    let ws = new WebSocket(location.origin.replace('http', 'ws') + location.pathname + 'echo-websocket');
+    let ws = new WebSocket(location.origin.replace('http', 'ws') + locationPath() + 'echo-websocket');
     ws.onopen = async function() {
       let duration = performance.now() - start;
       log('WebSocket connection established in ' + duration + 'ms');
