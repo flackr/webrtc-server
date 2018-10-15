@@ -19,7 +19,7 @@ function $(id) {
 document.addEventListener('DOMContentLoaded', function() {
   $('run').addEventListener('click', function() {
     $('run').disabled = true;
-    let ws = new WebSocket(location.origin.replace('http', 'ws') + '/listen/' + $('name').value);
+    let ws = new WebSocket(location.origin.replace('http', 'ws') + location.pathname + 'listen/' + $('name').value);
     ws.onopen = function() {
       $('run').textContent = 'Listening';
     }

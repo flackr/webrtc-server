@@ -33,7 +33,7 @@ exports.Server = function() {
       this.webServer_ = null;
       this.webSocketServer_ = null;
       this.listeners_ = {};
-      this.serve = serveStatic('./');
+      this.serve = serveStatic(((__dirname + '/') || '') + './');
     }
 
     listen(options) {
@@ -110,5 +110,7 @@ exports.Server = function() {
   return Server;
 }();
 
-let server = new exports.Server();
-server.listen({});
+if (require.main === module) {
+  let server = new exports.Server();
+  server.listen({});
+}

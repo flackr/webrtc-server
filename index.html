@@ -3,47 +3,85 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>WebRTC echo test</title>
 </head>
-<style>#log { white-space: pre; }</style>
+<style>
+html, body {
+  height: 100%;
+  position: relative;
+}
+#log { white-space: pre; }
+#canvas {
+	width: 100%;
+	height: 100%;
+	display: none;
+	position: absolute;
+	top: 0;
+	left: 0;
+}
+#progress {
+  border: 1px solid gray;
+  height: 20px;
+  padding: 1px;
+  position: relative;
+}
+#progress .bar {
+  box-sizing: border-box;
+  background: blue;
+  width: 0%;
+  height: 100%;
+}
+body.fullscreen #configuration {
+  display: none;
+}
+body.fullscreen #canvas {
+  display: block;
+}
+</style>
 <script src="webrtc-connection.js"></script>
+<script src="https://www.chartjs.org/dist/2.7.2/Chart.bundle.js"></script>
+<script src="https://www.chartjs.org/samples/latest/utils.js"></script>
 <body>
-<p>
-  Ping test of establishing a connection to the server and sending messages and
-  measuring the response time.
-</p>
+<div id="configuration">
+  <p>
+    Ping test of establishing a connection to the server and sending messages and
+    measuring the response time.
+  </p>
 
-<span>Number of messages: </span><input id="message-count" value="30">
-<p>
-  The number of messages to send in the test.
-</p>
+  <span>Number of messages: </span><input id="message-count" value="30">
+  <p>
+    The number of messages to send in the test.
+  </p>
 
-<span>Message interval (in milliseconds): </span><input id="message-interval" value="30">
-<p>
-  The time between sending each message. In a game this would normally be
-  whatever your game's network update loop interval was. Message receipt is not
-  waited for.
-</p>
+  <span>Message interval (in milliseconds): </span><input id="message-interval" value="30">
+  <p>
+    The time between sending each message. In a game this would normally be
+    whatever your game's network update loop interval was. Message receipt is not
+    waited for.
+  </p>
 
-<span>Message timeout (in milliseconds): </span><input id="message-timeout" value="1000">
-<p>
-  The maximum time to wait for responses once all messages are sent.
-</p>
+  <span>Message timeout (in milliseconds): </span><input id="message-timeout" value="1000">
+  <p>
+    The maximum time to wait for responses once all messages are sent.
+  </p>
 
-<span>Message length (in bytes): </span><input id="message-length" value="1000">
-<p>
-  The length of message to send. When targeting performance, this should be
-  less than the fragmentation threshold and allow for some overhead from the
-  protocol.
-</p>
+  <span>Message length (in bytes): </span><input id="message-length" value="1000">
+  <p>
+    The length of message to send. When targeting performance, this should be
+    less than the fragmentation threshold and allow for some overhead from the
+    protocol.
+  </p>
 
-<span>Use custom server: </span><input id="server-name"><br>
-<button id="run-test">Run test</button>
+  <span>Use custom server: </span><input id="server-name"><br>
+  <button id="run-test">Run test</button>
 
-<p>
-Note about iOS: IOS requires calling getUserMedia before allowing WebRTC to
-establish a direct connection.addEventListener
-</p>
-<button id="get-user-media">Get User Media</button>
-<div id="log"></div>
+  <p>
+  Note about iOS: IOS requires calling getUserMedia before allowing WebRTC to
+  establish a direct connection.addEventListener
+  </p>
+  <button id="get-user-media">Get User Media</button>
+  <div id="progress"><div class="bar"></div></div>
+  <div id="log"></div>
+</div>
+<canvas id="canvas"></canvas>
 <script>
 
 function $(id) {
@@ -51,23 +89,41 @@ function $(id) {
 }
 
 function log(text) {
-  document.getElementById('log').textContent += text + '\n';
+  // No logging.
+  // document.getElementById('log').textContent += text + '\n';
 }
 
-function pingTest(connection, frequency, messages, message_length, timeout) {
+function setProgress(p) {
+  document.querySelector('#progress .bar').style.width = (p * 100) + '%';
+}
+
+function pingTest(connection, frequency, messages, message_length, timeout, test, num_tests) {
   return new Promise(function(resolve) {
+    let results = {
+      dropped: 0,
+      unordered: 0,
+      connection: 0,
+      latency: [],
+    };
     function testDone() {
       clearTimeout(timeoutTimer);
       clearInterval(interval);
       if (received < messages) {
+        results.dropped = messages - received;
+        for (let i = 0; i < results.dropped; i++) {
+          // Push large value (or timeout) for dropped results.
+          results.latency.push(Math.max(10000, timeout));
+        }
         log('Dropped ' + (messages - received) + ' messages.');
       }
       connection.removeEventListener('message', onmessage);
       connection.close();
-      resolve();
+      setProgress((test + 1) / num_tests);
+      resolve(results);
     }
     let pingStartTimes = [];
     let received = 0;
+    let lastResponse = -1;
     let timeoutTimer = undefined;
 
     let prefix = '';
@@ -77,9 +133,16 @@ function pingTest(connection, frequency, messages, message_length, timeout) {
     function onmessage(evt) {
       let receiveTime = performance.now();
       let index = parseInt(evt.data.substring(prefix.length));
-      let time = (receiveTime - pingStartTimes[index]);
-      log('Ping ' + index + ' received in ' + time + 'ms');
+      if (index != lastResponse + 1)
+        results.unordered++;
+      while (lastResponse < index) {
+        ++lastResponse;
+        let time = (receiveTime - pingStartTimes[lastResponse]);
+        results.latency.push(time);
+        log('Ping ' + lastResponse + ' received in ' + time + 'ms');
+      }
       received++;
+      setProgress((test + (lastResponse / messages)) / num_tests);
       if (received == messages) {
         testDone();
       }
@@ -98,31 +161,39 @@ function pingTest(connection, frequency, messages, message_length, timeout) {
   });
 }
 
+let test = 0;
+let num_tests = 2;
+
 async function testWebRTC(params) {
   log('Connecting WebRTC...');
   let start = performance.now();
-  let url = location.origin.replace('http', 'ws') + '/echo';
+  let url = location.origin.replace('http', 'ws') + location.pathname + 'echo';
   if ($('server-name').value)
-    url = location.origin.replace('http', 'ws') + '/connect/' + $('server-name').value;
+    url = location.origin.replace('http', 'ws') + location.pathname + 'connect/' + $('server-name').value;
   let conn = await WebRTCConnection.establish(new WebSocket(url));
   let duration = performance.now() - start;
   log('WebRTC connection established in ' + duration + 'ms');
-  await pingTest(conn, params.interval, params.count, params.length, params.timeout);
+  let results = await pingTest(conn, params.interval, params.count, params.length, params.timeout, test, num_tests);
+  results.connection = duration;
+  return results;
 }
 
 function testWebSocket(params) {
   return new Promise(function (resolve, reject) {
     log('Connecting WebSocket...');
     let start = performance.now();
-    let ws = new WebSocket(location.origin.replace('http', 'ws') + '/echo-websocket');
-    ws.onopen = function() {
+    let ws = new WebSocket(location.origin.replace('http', 'ws') + location.pathname + 'echo-websocket');
+    ws.onopen = async function() {
       let duration = performance.now() - start;
       log('WebSocket connection established in ' + duration + 'ms');
-      pingTest(ws, params.interval, params.count, params.length, params.timeout).then(resolve);
+      let results = await pingTest(ws, params.interval, params.count, params.length, params.timeout, test, num_tests);
+      results.connection = duration;
+      resolve(results);
     };
   });
 }
 
+const color = Chart.helpers.color;
 async function runTests() {
   // Clear log first.
   $('log').textContent = '';
@@ -132,8 +203,89 @@ async function runTests() {
     timeout: parseInt($('message-timeout').value),
     length: parseInt($('message-length').value),
   }
-  await testWebSocket(params);
-  await testWebRTC(params);
+  let results = {WebSocket: undefined, WebRTC: undefined};
+  num_tests = 2;
+  results.WebSocket = await testWebSocket(params);
+  ++test;
+  results.WebRTC = await testWebRTC(params);
+  ++test;
+
+  document.body.classList.add('fullscreen');
+  let bucketSize = 20;
+  let minBuckets = 30;
+  let maxValue = 0;
+  for (let category in results) {
+    for (let i = 0; i < results[category].latency.length; i++) {
+      maxValue = Math.max(maxValue, results[category].latency[i]);
+    }
+  }
+  bucketSize = Math.min(bucketSize, Math.max(1, Math.floor(maxValue / minBuckets)));
+  console.log(bucketSize);
+  var ctx = document.getElementById('canvas').getContext('2d');
+    window.myScatter = new Chart(ctx, {
+    type: 'line',
+    data: generateData(results, bucketSize, maxValue),
+    options: {
+      maintainAspectRatio: false,
+      title: {
+      	display: true,
+      	text: 'Latency Test'
+      },
+      scales: {
+      	xAxes: [{
+      	  type: 'linear',
+      	  position: 'bottom',
+      	  scaleLabel: {
+      	    labelString: 'Latency (ms)',
+      	    display: true,
+      	  }
+      	}],
+      	yAxes: [{
+      	  type: 'linear',
+      	  ticks: {
+            beginAtZero: true,
+          },
+      	  scaleLabel: {
+      	    labelString: '# packets',
+      	    display: true
+      	  }
+      	}]
+      }
+    }
+  });
+}
+
+function generateData(results, bucketSize, maxValue) {
+  return {datasets: [
+    {
+      borderColor: window.chartColors.red,
+      backgroundColor: color(window.chartColors.red).alpha(0.5).rgbString(),
+      label: 'WebSocket',
+      data: generateDataSet(results.WebSocket, bucketSize, maxValue),
+    }, {
+      borderColor: window.chartColors.blue,
+      backgroundColor: color(window.chartColors.blue).alpha(0.5).rgbString(),
+      label: 'WebRTC DataChannel',
+      data: generateDataSet(results.WebRTC, bucketSize, maxValue),
+    }]};
+}
+
+function generateDataSet(results, bucketSize, maxValue) {
+  let scatter = {};
+  let chartData = [];
+  for (let i = 0; i < results.latency.length; i++) {
+    let bucket = Math.floor(results.latency[i] / bucketSize) * bucketSize;
+    scatter[bucket] = (scatter[bucket] || 0) + 1;
+  }
+  let buckets = Math.ceil(maxValue / bucketSize)
+  for (let i = 0; i < buckets; i++) {
+    chartData.push({
+      x: i * bucketSize,
+      y: scatter[i * bucketSize] || 0,
+    });
+  }
+  console.log(chartData);
+  return chartData;
 }
 
 document.addEventListener('DOMContentLoaded', function() {
