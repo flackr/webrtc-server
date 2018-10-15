@@ -35,10 +35,11 @@ body.fullscreen #configuration {
 body.fullscreen #canvas {
   display: block;
 }
-body.fullscreen #save {
+#save {
   position: absolute;
   top: 2px;
   left: 2px;
+  display: none;
 }
 body.fullscreen #save {
   display: block;
@@ -212,7 +213,7 @@ async function runTests() {
     timeout: parseInt($('message-timeout').value),
     length: parseInt($('message-length').value),
   }
-  let results = {WebSocket: undefined, WebRTC: undefined};
+  let results = {WebSocket: undefined, WebRTC: undefined, params: params};
   num_tests = 2;
   results.WebSocket = await testWebSocket(params);
   ++test;
