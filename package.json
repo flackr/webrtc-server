@@ -11,6 +11,7 @@
     "ws": "~6.1.0",
     "wrtc": "~0.2.1",
     "finalhandler": "~1.1.1",
-    "serve-static": "~1.13.2"
+    "serve-static": "~1.13.2",
+    "perf_hooks": "~0.0.1"
   }
 }

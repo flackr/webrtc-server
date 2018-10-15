@@ -108,18 +108,20 @@ function setProgress(p) {
 }
 
 function pingTest(connection, frequency, messages, message_length, timeout, test, num_tests) {
+  const GARBAGE_SEPARATOR = '{(})';
   return new Promise(function(resolve) {
     let results = {
       dropped: 0,
       unordered: 0,
       connection: 0,
+      skipped: 0,
       latency: [],
     };
     function testDone() {
       clearTimeout(timeoutTimer);
       clearInterval(interval);
-      if (received < messages) {
-        results.dropped = messages - received;
+      results.dropped = messages - lastResponse - 1;
+      if (results.dropped > 0) {
         for (let i = 0; i < results.dropped; i++) {
           // Push timeout for dropped results.
           results.latency.push(timeout);
@@ -136,15 +138,29 @@ function pingTest(connection, frequency, messages, message_length, timeout, test
     let lastResponse = -1;
     let timeoutTimer = undefined;
 
-    let prefix = '';
-    while (prefix.length < message_length)
-      prefix += String.fromCharCode(65 + (Math.random() * 26));
+    let garbage = '';
+    let message = {
+      i: 0, // The index of the message.
+      time: performance.now(), // The time the message was sent.
+      serverTime: performance.now(), // Filled in by the server's time.
+      skipped: 0, // Filled in by the number of messages the server skipped.
+    };
+    let to_add = message_length - JSON.stringify(message).length - GARBAGE_SEPARATOR.length;
+    while (to_add > 0) {
+      to_add--;
+      garbage += String.fromCharCode(65 + (Math.random() * 26));
+    }
 
     function onmessage(evt) {
       let receiveTime = performance.now();
-      let index = parseInt(evt.data.substring(prefix.length));
-      if (index != lastResponse + 1)
+      let message = JSON.parse(evt.data.substring(0, evt.data.indexOf(GARBAGE_SEPARATOR)));
+      let index = message.i;
+      if (index > lastResponse) {
+        // Record latest values from server.
+        results.skipped = message.skipped;
+      } else {
         results.unordered++;
+      }
       while (lastResponse < index) {
         ++lastResponse;
         let time = (receiveTime - pingStartTimes[lastResponse]);
@@ -157,12 +173,13 @@ function pingTest(connection, frequency, messages, message_length, timeout, test
         testDone();
       }
     }
-
     connection.addEventListener('message', onmessage);
     let interval = setInterval(function() {
       let index = pingStartTimes.length;
-      pingStartTimes.push(performance.now());
-      connection.send(prefix + index);
+      message.i = index;
+      message.time = message.serverTime = performance.now();
+      pingStartTimes.push(message.time);
+      connection.send(JSON.stringify(message) + GARBAGE_SEPARATOR + garbage);
       if (pingStartTimes.length == messages) {
         clearInterval(interval);
         timeoutTimer = setTimeout(testDone, timeout)
