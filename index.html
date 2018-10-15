@@ -35,6 +35,14 @@ body.fullscreen #configuration {
 body.fullscreen #canvas {
   display: block;
 }
+body.fullscreen #save {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+}
+body.fullscreen #save {
+  display: block;
+}
 </style>
 <script src="webrtc-connection.js"></script>
 <script src="https://www.chartjs.org/dist/2.7.2/Chart.bundle.js"></script>
@@ -82,6 +90,7 @@ body.fullscreen #canvas {
   <div id="log"></div>
 </div>
 <canvas id="canvas"></canvas>
+<a id="save">Save</a>
 <script>
 
 function $(id) {
@@ -111,8 +120,8 @@ function pingTest(connection, frequency, messages, message_length, timeout, test
       if (received < messages) {
         results.dropped = messages - received;
         for (let i = 0; i < results.dropped; i++) {
-          // Push large value (or timeout) for dropped results.
-          results.latency.push(Math.max(10000, timeout));
+          // Push timeout for dropped results.
+          results.latency.push(timeout);
         }
         log('Dropped ' + (messages - received) + ' messages.');
       }
@@ -210,21 +219,16 @@ async function runTests() {
   results.WebRTC = await testWebRTC(params);
   ++test;
 
+  window.results = results;
+  let saveLink = $('save');
+  saveLink.download = 'latency.json';
+  saveLink.href = 'data:text/json,' + JSON.stringify(results);
+
   document.body.classList.add('fullscreen');
-  let bucketSize = 20;
-  let minBuckets = 30;
-  let maxValue = 0;
-  for (let category in results) {
-    for (let i = 0; i < results[category].latency.length; i++) {
-      maxValue = Math.max(maxValue, results[category].latency[i]);
-    }
-  }
-  bucketSize = Math.min(bucketSize, Math.max(1, Math.floor(maxValue / minBuckets)));
-  console.log(bucketSize);
   var ctx = document.getElementById('canvas').getContext('2d');
     window.myScatter = new Chart(ctx, {
     type: 'line',
-    data: generateData(results, bucketSize, maxValue),
+    data: generateData(results),
     options: {
       maintainAspectRatio: false,
       title: {
@@ -235,8 +239,13 @@ async function runTests() {
       	xAxes: [{
       	  type: 'linear',
       	  position: 'bottom',
+      	  ticks: {
+      	    userCallback: function(tick) {
+      		    return (tick * 100).toString() + '%';
+      	    },
+      	  },
       	  scaleLabel: {
-      	    labelString: 'Latency (ms)',
+      	    labelString: 'Percentile',
       	    display: true,
       	  }
       	}],
@@ -246,7 +255,7 @@ async function runTests() {
             beginAtZero: true,
           },
       	  scaleLabel: {
-      	    labelString: '# packets',
+      	    labelString: 'Latency (ms)',
       	    display: true
       	  }
       	}]
@@ -255,36 +264,31 @@ async function runTests() {
   });
 }
 
-function generateData(results, bucketSize, maxValue) {
+function generateData(results) {
   return {datasets: [
     {
       borderColor: window.chartColors.red,
       backgroundColor: color(window.chartColors.red).alpha(0.5).rgbString(),
       label: 'WebSocket',
-      data: generateDataSet(results.WebSocket, bucketSize, maxValue),
+      data: generateDataSet(results.WebSocket),
     }, {
       borderColor: window.chartColors.blue,
       backgroundColor: color(window.chartColors.blue).alpha(0.5).rgbString(),
       label: 'WebRTC DataChannel',
-      data: generateDataSet(results.WebRTC, bucketSize, maxValue),
+      data: generateDataSet(results.WebRTC),
     }]};
 }
 
-function generateDataSet(results, bucketSize, maxValue) {
+function generateDataSet(results) {
   let scatter = {};
   let chartData = [];
-  for (let i = 0; i < results.latency.length; i++) {
-    let bucket = Math.floor(results.latency[i] / bucketSize) * bucketSize;
-    scatter[bucket] = (scatter[bucket] || 0) + 1;
-  }
-  let buckets = Math.ceil(maxValue / bucketSize)
-  for (let i = 0; i < buckets; i++) {
+  let values = results.latency.concat().sort((a, b) => {return a - b;});
+  for (let i = 0; i < values.length; i++) {
     chartData.push({
-      x: i * bucketSize,
-      y: scatter[i * bucketSize] || 0,
+      x: i / (values.length - 1),
+      y: values[i],
     });
   }
-  console.log(chartData);
   return chartData;
 }
 
