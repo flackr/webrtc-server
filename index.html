@@ -10,12 +10,8 @@ html, body {
 }
 #log { white-space: pre; }
 #canvas {
-	width: 100%;
-	height: 100%;
-	display: none;
-	position: absolute;
-	top: 0;
-	left: 0;
+	width: 90%;
+	height: 90vh;
 }
 #progress {
   border: 1px solid gray;
@@ -39,9 +35,11 @@ body.fullscreen #canvas {
   position: absolute;
   top: 2px;
   left: 2px;
+}
+#output {
   display: none;
 }
-body.fullscreen #save {
+body.fullscreen #output {
   display: block;
 }
 </style>
@@ -90,8 +88,16 @@ body.fullscreen #save {
   <div id="progress"><div class="bar"></div></div>
   <div id="log"></div>
 </div>
-<canvas id="canvas"></canvas>
-<a id="save">Save</a>
+<div id="output">
+  <a id="save">Save</a>
+  <canvas id="canvas"></canvas>
+  <div id="details">
+    <p>Connection time: <span id="connection"></span></p>
+    <p>Dropped: <span id="dropped"></span></p>
+    <p>Skipped response (server received out of order): <span id="skipped"></span></p>
+    <p>Response out of order: <span id="unordered"></span></p>
+  </div>
+</div>
 <script>
 
 function $(id) {
@@ -124,7 +130,8 @@ function pingTest(connection, frequency, messages, message_length, timeout, test
     function testDone() {
       clearTimeout(timeoutTimer);
       clearInterval(interval);
-      results.dropped = messages - lastResponse - 1;
+      // Assume that anything that wasn't explicitly skipped was dropped.
+      results.dropped = messages - received - results.skipped;
       if (results.dropped > 0) {
         for (let i = 0; i < results.dropped; i++) {
           // Push timeout for dropped results.
@@ -226,6 +233,7 @@ function testWebSocket(params) {
 
 const color = Chart.helpers.color;
 async function runTests() {
+  $('run-test').disabled = true;
   // Clear log first.
   $('log').textContent = '';
   let params = {
@@ -241,12 +249,21 @@ async function runTests() {
   results.WebRTC = await testWebRTC(params);
   ++test;
 
+  $('run-test').disabled = false;
+
   window.results = results;
   let saveLink = $('save');
   saveLink.download = 'latency.json';
   saveLink.href = 'data:text/json,' + JSON.stringify(results);
 
   document.body.classList.add('fullscreen');
+
+  let details = document.querySelectorAll('#details span');
+  for (let i = 0; i < details.length; i++) {
+    details[i].textContent = results.WebRTC[details[i].id];
+  }
+  $('connection').textContent = Math.round(results.WebSocket.connection) + 'ms (WebSocket) / ' + Math.round(results.WebRTC.connection) + 'ms (WebRTC)';
+
   var ctx = document.getElementById('canvas').getContext('2d');
     window.myScatter = new Chart(ctx, {
     type: 'line',
